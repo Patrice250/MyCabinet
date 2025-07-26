@@ -96,7 +96,9 @@ export const getSafeZoneSettings = async (req, res) => {
     const [rows] = await pool.query('SELECT * FROM safe_zone_settings LIMIT 1');
     res.json(rows[0] || { 
       safe_zone_radius: 0.05, 
-      gps_drift_threshold: 0.01 
+      gps_drift_threshold: 0.01,
+      home_latitude: -2.148252,
+      home_longitude: 30.542430
     });
   } catch (error) {
     console.error('Error fetching safe zone settings:', error);
@@ -105,21 +107,56 @@ export const getSafeZoneSettings = async (req, res) => {
 };
 
 export const updateSafeZoneSettings = async (req, res) => {
-  const { safe_zone_radius, gps_drift_threshold } = req.body;
+  const { safe_zone_radius, gps_drift_threshold, home_latitude, home_longitude } = req.body;
 
   try {
     await pool.query(`
       INSERT INTO safe_zone_settings 
-        (safe_zone_radius, gps_drift_threshold) 
-      VALUES (?, ?)
+        (safe_zone_radius, gps_drift_threshold, home_latitude, home_longitude) 
+      VALUES (?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         safe_zone_radius = VALUES(safe_zone_radius),
-        gps_drift_threshold = VALUES(gps_drift_threshold)
-    `, [safe_zone_radius, gps_drift_threshold]);
+        gps_drift_threshold = VALUES(gps_drift_threshold),
+        home_latitude = VALUES(home_latitude),
+        home_longitude = VALUES(home_longitude)
+    `, [safe_zone_radius, gps_drift_threshold, home_latitude, home_longitude]);
 
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating safe zone settings:', error);
     res.status(500).json({ error: "Failed to update settings" });
+  }
+};
+
+export const getHomeLocation = async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT home_latitude as latitude, home_longitude as longitude FROM safe_zone_settings LIMIT 1');
+    res.json(rows[0] || { 
+      latitude: -2.148252,
+      longitude: 30.542430
+    });
+  } catch (error) {
+    console.error('Error fetching home location:', error);
+    res.status(500).json({ error: "Failed to fetch home location" });
+  }
+};
+
+export const setHomeLocation = async (req, res) => {
+  const { latitude, longitude } = req.body;
+
+  try {
+    await pool.query(`
+      INSERT INTO safe_zone_settings 
+        (home_latitude, home_longitude) 
+      VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE
+        home_latitude = VALUES(home_latitude),
+        home_longitude = VALUES(home_longitude)
+    `, [latitude, longitude]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error setting home location:', error);
+    res.status(500).json({ error: "Failed to set home location" });
   }
 };

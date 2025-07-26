@@ -4,7 +4,9 @@ import {
   getLatestGPS, 
   handleAlert,
   getSafeZoneSettings,
-  updateSafeZoneSettings
+  updateSafeZoneSettings,
+  getHomeLocation,
+  setHomeLocation
 } from '../controllers/gpsController.js';
 
 const router = express.Router();
@@ -17,5 +19,9 @@ router.post('/alert', handleAlert);
 // Safe Zone Configuration Endpoints
 router.get('/settings', getSafeZoneSettings);
 router.post('/settings', updateSafeZoneSettings);
+
+// Home Location Endpoints
+router.get('/home', getHomeLocation);
+router.post('/home', setHomeLocation);
 
 export default router;

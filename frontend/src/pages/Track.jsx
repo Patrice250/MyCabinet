@@ -25,6 +25,16 @@ const alertIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+// Home location icon
+const homeIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
 // Socket.io connection
 const socket = io('http://localhost:5002', {
   reconnection: true,
@@ -60,24 +70,37 @@ const Track = () => {
   const [refreshInterval, setRefreshInterval] = useState(10000);
   const [lastApiTimestamp, setLastApiTimestamp] = useState(null);
   const [alertMode, setAlertMode] = useState(false);
-  const [safeZoneCenter] = useState([-2.148252, 30.542430]);
+  const [safeZoneCenter, setSafeZoneCenter] = useState([-2.148252, 30.542430]);
   const [safeZoneRadius, setSafeZoneRadius] = useState(50); // meters
   const [gpsDriftThreshold, setGpsDriftThreshold] = useState(10); // meters
   const [alertHistory, setAlertHistory] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [homeLocation, setHomeLocation] = useState(null);
   const mapRef = useRef(null);
 
-  // Fetch initial settings
+  // Fetch initial settings and home location
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const res = await axios.get('http://localhost:5002/api/gps/settings');
-        if (res.data) {
-          setSafeZoneRadius(res.data.safe_zone_radius * 111320); // Convert degrees to meters
-          setGpsDriftThreshold(res.data.gps_drift_threshold * 111320);
+        const [settingsRes, homeRes] = await Promise.all([
+          axios.get('http://localhost:5002/api/gps/settings'),
+          axios.get('http://localhost:5002/api/gps/home')
+        ]);
+        
+        if (settingsRes.data) {
+          setSafeZoneRadius(settingsRes.data.safe_zone_radius * 111320);
+          setGpsDriftThreshold(settingsRes.data.gps_drift_threshold * 111320);
+          setSafeZoneCenter([
+            settingsRes.data.home_latitude || -2.148252, 
+            settingsRes.data.home_longitude || 30.542430
+          ]);
+        }
+        
+        if (homeRes.data && homeRes.data.latitude && homeRes.data.longitude) {
+          setHomeLocation([homeRes.data.latitude, homeRes.data.longitude]);
         }
       } catch (err) {
-        console.error("Failed to fetch settings", err);
+        console.error("Failed to fetch settings or home location", err);
       }
     };
     fetchSettings();
@@ -173,13 +196,30 @@ const Track = () => {
   const saveSettings = async () => {
     try {
       await axios.post('http://localhost:5002/api/gps/settings', {
-        safe_zone_radius: safeZoneRadius / 111320, // Convert meters to degrees
-        gps_drift_threshold: gpsDriftThreshold / 111320
+        safe_zone_radius: safeZoneRadius / 111320,
+        gps_drift_threshold: gpsDriftThreshold / 111320,
+        home_latitude: safeZoneCenter[0],
+        home_longitude: safeZoneCenter[1]
       });
       setShowSettings(false);
       toast.success('Settings saved successfully');
     } catch (err) {
       toast.error('Failed to save settings');
+    }
+  };
+
+  const setHomeLocationHandler = async () => {
+    try {
+      const response = await axios.post('http://localhost:5002/api/gps/home', {
+        latitude: position[0],
+        longitude: position[1]
+      });
+      setHomeLocation([position[0], position[1]]);
+      setSafeZoneCenter([position[0], position[1]]);
+      toast.success('Home location set successfully');
+    } catch (error) {
+      toast.error('Failed to set home location');
+      console.error('Error setting home location:', error);
     }
   };
 
@@ -233,6 +273,12 @@ const Track = () => {
               Acknowledge Alert
             </button>
           )}
+          <button 
+            onClick={setHomeLocationHandler}
+            className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
+          >
+            Set Home Here
+          </button>
           <button 
             onClick={() => setShowSettings(!showSettings)}
             className="px-3 py-1 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 transition"
@@ -356,15 +402,17 @@ const Track = () => {
                 </Popup>
               </Marker>
               
-              <Marker position={safeZoneCenter}>
-                <Popup>
-                  <div className="font-medium">
-                    <div className="font-bold">Safe Zone Center</div>
-                    <div>Radius: {(safeZoneRadius/1000).toFixed(1)} km</div>
-                    <div>Drift Threshold: {gpsDriftThreshold} m</div>
-                  </div>
-                </Popup>
-              </Marker>
+              {homeLocation && (
+                <Marker position={homeLocation} icon={homeIcon}>
+                  <Popup>
+                    <div className="font-medium">
+                      <div className="font-bold">Home Location</div>
+                      <div>Latitude: {homeLocation[0].toFixed(6)}</div>
+                      <div>Longitude: {homeLocation[1].toFixed(6)}</div>
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
             </MapContainer>
           </div>
 
@@ -380,6 +428,14 @@ const Track = () => {
                   safeZoneCenter[0], safeZoneCenter[1]
                 ).toFixed(0)} meters
               </p>
+              {homeLocation && (
+                <p className="text-sm text-gray-500 mt-1">
+                  Distance from home: {calculateDistance(
+                    position[0], position[1],
+                    homeLocation[0], homeLocation[1]
+                  ).toFixed(0)} meters
+                </p>
+              )}
             </div>
             <div className="bg-white p-4 rounded-lg shadow">
               <h3 className="font-medium text-gray-700">Last Update</h3>
